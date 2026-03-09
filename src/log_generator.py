@@ -15,13 +15,16 @@ endpoint. Supports two modes:
     to show window progress. Useful for simulating sustained log traffic.
 
 Usage examples:
-  # Burst: send 1000 error logs at once
+  # Burst: send 1000 error logs spread over the last 30 seconds (default)
   python -m src.log_generator --burst 1000
+
+  # Burst: send 500 logs spread over the last 60 seconds
+  python -m src.log_generator --burst 500 --burst-spread 60
 
   # Continuous: 50 logs/batch, one batch per second, 40% error rate
   python -m src.log_generator --rate 50 --interval 1.0 --error-ratio 0.4
 
-  # Target a remote server with custom machine pool
+  # Target a remote server with 10 simulated machines
   python -m src.log_generator --url http://10.0.0.5:8080 --machines 10
 """
 
@@ -67,21 +70,29 @@ MESSAGES = [
 ]
 
 
-def generate_log_entry(machines, error_ratio):
+def generate_log_entry(machines, error_ratio, base_time=None, spread_seconds=0):
     """Generate a single synthetic log entry as a JSON-compatible dict.
 
     Args:
-        machines:    List of machine name strings to pick from randomly.
-        error_ratio: Float 0.0-1.0 controlling the fraction of entries
-                     that have Error/Fatal level (qualifying logs) vs
-                     Info/Warning/Debug (non-qualifying). For example,
-                     0.3 means ~30% of logs will be errors.
+        machines:       List of machine name strings to pick from randomly.
+        error_ratio:    Float 0.0-1.0 controlling the fraction of entries
+                        that have Error/Fatal level (qualifying logs) vs
+                        Info/Warning/Debug (non-qualifying). For example,
+                        0.3 means ~30% of logs will be errors.
+        base_time:      The reference timestamp to generate from. Defaults
+                        to datetime.utcnow() if not provided.
+        spread_seconds: If > 0 (burst mode), the timestamp is uniformly
+                        distributed in [base_time - spread, base_time].
+                        This spreads entries across multiple time buckets
+                        for realistic testing. If 0 (continuous mode),
+                        a small jitter of -2s to 0s is applied instead.
 
     Returns:
         A dict matching the LogEntry JSON schema expected by POST /api/logs.
-        Timestamp includes a small random jitter (-2s to 0s) to simulate
-        realistic clock variation between source machines.
     """
+    if base_time is None:
+        base_time = datetime.utcnow()
+
     # Pick a random machine from the pool.
     machine = random.choice(machines)
 
@@ -95,10 +106,17 @@ def generate_log_entry(machines, error_ratio):
 
     message = random.choice(MESSAGES)
 
-    # Add small jitter to timestamp to simulate clock skew between machines.
-    # Range: -2s to 0s (slightly in the past, never in the future).
-    jitter = timedelta(seconds=random.uniform(-2.0, 0.0))
-    ts = datetime.utcnow() + jitter
+    if spread_seconds > 0:
+        # Burst mode: spread timestamps uniformly across the time range
+        # [base_time - spread, base_time]. This ensures entries land in
+        # many different time buckets rather than all in the same second.
+        offset = timedelta(seconds=random.uniform(-spread_seconds, 0))
+    else:
+        # Continuous mode: small jitter (-2s to 0s) to simulate realistic
+        # clock skew between source machines.
+        offset = timedelta(seconds=random.uniform(-2.0, 0.0))
+
+    ts = base_time + offset
 
     return {
         "timestamp": ts.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
@@ -159,14 +177,20 @@ def print_status(status):
           f"  window_start={status['window_start']}")
 
 
-def run_burst(base_url, machines, count, error_ratio):
+def run_burst(base_url, machines, count, error_ratio, spread_seconds):
     """Burst mode: generate N logs in one batch, POST, print results.
 
     Sends a single large batch to quickly test threshold triggering.
+    When spread_seconds > 0, timestamps are distributed across that time
+    range so entries land in multiple time buckets (realistic).
     After the POST, fetches and prints the server status.
     """
-    print(f"Burst mode: generating {count} logs...")
-    logs = [generate_log_entry(machines, error_ratio) for _ in range(count)]
+    spread_msg = f", spread over {spread_seconds}s" if spread_seconds > 0 else ""
+    print(f"Burst mode: generating {count} logs{spread_msg}...")
+    now = datetime.utcnow()
+    logs = [generate_log_entry(machines, error_ratio, base_time=now,
+                               spread_seconds=spread_seconds)
+            for _ in range(count)]
 
     # Count how many are qualifying (Error/Fatal) for user visibility.
     error_count = sum(1 for l in logs if l["log_level"] in ERROR_LEVELS)
@@ -267,6 +291,10 @@ def main():
         "--burst", type=int, default=None,
         help="Burst mode: generate N logs in one batch and exit",
     )
+    parser.add_argument(
+        "--burst-spread", type=int, default=30,
+        help="Spread burst timestamps over this many seconds (default: 30)",
+    )
     args = parser.parse_args()
 
     # Build machine name pool: web-01, web-02, ..., web-NN
@@ -275,7 +303,8 @@ def main():
     base_url = args.url.rstrip("/")
 
     if args.burst:
-        run_burst(base_url, machines, args.burst, args.error_ratio)
+        run_burst(base_url, machines, args.burst, args.error_ratio,
+                  args.burst_spread)
     else:
         run_continuous(base_url, machines, args.rate, args.interval, args.error_ratio)
 
