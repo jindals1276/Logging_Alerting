@@ -82,8 +82,12 @@ class AggregationEngine:
     reading or mutating shared state.
     """
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, analyzer=None):
         self._config = config
+
+        # Optional LLM analyzer for enriching alerts with human-readable
+        # summaries. Called outside the lock after alert creation.
+        self._analyzer = analyzer
 
         # --- Shared state (all access must hold self._lock) ---
 
@@ -252,7 +256,16 @@ class AggregationEngine:
                 self._breakdown[key] = self._breakdown.get(key, 0) + 1
 
             # After processing the full batch, check if we've hit the threshold.
-            return self._check_threshold()
+            alert = self._check_threshold()
+
+        # LLM enrichment runs OUTSIDE the lock. The enrich() method spawns
+        # a background thread and returns immediately, so this adds near-zero
+        # latency to process_batch(). The analysis is written back onto the
+        # alert object asynchronously (1-2 seconds later).
+        if alert is not None and self._analyzer is not None:
+            self._analyzer.enrich(alert)
+
+        return alert
 
     def get_alerts(self) -> list[dict]:
         """Return all historical alerts as a list of JSON-serializable dicts."""
@@ -452,6 +465,7 @@ class AggregationEngine:
                     return
                 threading.Event().wait(0.1)
 
+            alert = None
             with self._lock:
                 # No data yet — nothing to slide.
                 if self._window_start is None:
@@ -464,7 +478,11 @@ class AggregationEngine:
                     # Re-check threshold after eviction. Sliding may have
                     # changed the count, and we want to detect if the
                     # remaining logs still exceed the threshold.
-                    self._check_threshold()
+                    alert = self._check_threshold()
+
+            # LLM enrichment outside the lock (same pattern as process_batch).
+            if alert is not None and self._analyzer is not None:
+                self._analyzer.enrich(alert)
 
         logger.info("Slider thread exiting.")
 

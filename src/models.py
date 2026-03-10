@@ -94,6 +94,11 @@ class Alert:
     total_count: int
     threshold: int
     breakdown: list = field(default_factory=list)
+    # LLM-generated analysis fields. Populated asynchronously by AlertAnalyzer
+    # after the alert fires. Readers may see "pending" until the background
+    # thread completes (typically 1-2 seconds).
+    analysis: Optional[str] = None
+    analysis_status: str = "pending"  # "pending", "completed", "skipped", "failed"
 
     @staticmethod
     def create(window_start: datetime, window_end: datetime,
@@ -125,6 +130,8 @@ class Alert:
             "total_count": self.total_count,
             "threshold": self.threshold,
             "breakdown": self.breakdown,
+            "analysis": self.analysis,
+            "analysis_status": self.analysis_status,
         }
 
 

@@ -206,8 +206,12 @@ def main():
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
-    # Create the aggregation engine.
-    engine = AggregationEngine(config)
+    # Create the LLM analyzer (optional — requires ANTHROPIC_API_KEY env var).
+    from src.analyzer import AlertAnalyzer
+    analyzer = AlertAnalyzer()
+
+    # Create the aggregation engine with the analyzer.
+    engine = AggregationEngine(config, analyzer=analyzer)
 
     # Create and configure the HTTP server.
     server = ThreadedHTTPServer(("", config.port), RequestHandler)
@@ -216,6 +220,7 @@ def main():
     server.config = config
 
     # Print startup banner.
+    analysis_status = "enabled" if analyzer.enabled else "disabled (no API key)"
     print("=" * 60)
     print("  Log Alert Service")
     print("=" * 60)
@@ -226,6 +231,7 @@ def main():
           f" {(config.window_duration_seconds % 3600) // 60}m)")
     print(f"  Levels:     {', '.join(config.qualifying_log_levels)}")
     print(f"  Grace:      {config.late_arrival_grace_seconds}s")
+    print(f"  LLM Analysis: {analysis_status}")
     print(f"  Log level:  {config.log_level}")
     print(f"")
     print(f"  Endpoints:")
