@@ -190,3 +190,25 @@ A pure event-time approach (window boundaries derived from the latest log timest
 | GET | `/api/alerts` | List all generated alerts |
 | GET | `/api/alerts/{id}` | Get a specific alert with breakdown |
 | GET | `/api/status` | Current window state and progress |
+
+## Performance
+
+### Throughput
+
+Single-message processing (batch_size=1) is roughly **4x slower** than batched
+processing (batch_size=500+) because every call to `process_batch()` pays the
+full cost of lock acquisition, threshold checking, and function call overhead
+— regardless of how many entries are in the batch.
+
+Run `python -m src.benchmark` to measure actual throughput on your hardware.
+
+### Future Improvement: Micro-Batching
+
+If throughput becomes a bottleneck under high load, a **micro-batching layer**
+could be added between the HTTP handler and the engine. Instead of calling
+`process_batch()` for each incoming request immediately, buffer incoming logs
+for a short window (e.g. 10-50ms) and flush them as a single batch.
+
+This would close the 4x gap between single-message and batched throughput.
+The trade-off is a small latency increase (10-50ms) before threshold detection.
+Not implemented currently.

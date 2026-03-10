@@ -104,6 +104,13 @@ class RequestHandler(BaseHTTPRequestHandler):
         For each object, attempts to parse it into a LogEntry via from_dict.
         Entries that fail parsing are counted as parse_errors but don't
         reject the whole batch -- partial success is allowed.
+
+        Future improvement: under very high load, this method could append
+        entries to a thread-safe buffer instead of calling process_batch()
+        immediately. A background flush thread would drain the buffer every
+        10-50ms and call process_batch() once, amortizing lock and threshold
+        check overhead (~4x improvement). See src/benchmark.py for measuring
+        throughput on your hardware.
         """
         try:
             # Read the request body.

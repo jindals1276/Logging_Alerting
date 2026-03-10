@@ -308,3 +308,35 @@ Main Thread                  Request Threads (N)         Slider Thread
 | Concurrent POST requests | Thread lock serializes access to shared state; each request processed atomically |
 | Empty batch submitted | No-op, returns `{accepted: 0, parse_errors: 0}` |
 | Invalid JSON body | Returns 400 with error message |
+
+---
+
+## 7. Performance Notes
+
+Single-message processing (batch_size=1) is roughly 4x slower than batched
+processing (batch_size=500+). The gap is due to per-call overhead on
+`process_batch()`: lock acquire/release, `_check_threshold()`, and Python
+function call cost — all paid once per batch regardless of batch size.
+
+Run `python -m src.benchmark` to measure actual throughput on your hardware.
+Use `--batch-sizes 1,10,100,500` to see the scaling behavior.
+
+### Future Improvement: Micro-Batching
+
+Currently each HTTP request calls `process_batch()` immediately. Under very high
+load, a micro-batching layer could be inserted in `server.py`:
+
+```
+POST /api/logs
+  -> RequestHandler._handle_post_logs()
+     -> append entries to a thread-safe buffer (lock-free queue)
+     -> return 200 immediately
+
+Background flush thread (every 10-50ms):
+  -> drain buffer
+  -> call engine.process_batch(buffered_entries)
+```
+
+This amortizes lock and threshold-check overhead across many entries, closing
+the 4x gap between single-message and batched throughput. Trade-off: 10-50ms
+latency before threshold detection. Not implemented currently.

@@ -148,6 +148,14 @@ class AggregationEngine:
     def process_batch(self, entries: list[LogEntry]) -> Optional[Alert]:
         """Filter and ingest a batch of log entries into time buckets.
 
+        Performance note: each call acquires the lock, processes all entries,
+        and runs _check_threshold(). Single-message calls (batch_size=1) are
+        roughly 4x slower than large batches due to per-call lock and
+        threshold-check overhead. If this becomes a bottleneck, consider
+        adding a micro-batching layer in the HTTP handler that buffers
+        entries for 10-50ms before flushing them here as a single batch.
+        Run `python -m src.benchmark` to measure on your hardware.
+
         For each entry the filter pipeline applies four checks in order:
           1. Level check   — only qualifying levels (e.g. Error, Fatal) pass.
           2. Late arrival  — drop if the log is older than the grace period.
