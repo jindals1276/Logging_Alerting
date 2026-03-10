@@ -243,3 +243,58 @@ If throughput becomes a bottleneck under high load:
 
 4. **Connection pooling / keep-alive** — reuse TCP connections across requests
    instead of opening a new connection per batch, reducing connection setup cost.
+
+## LLM Integration
+
+### Alert Analysis
+
+When an alert fires, an optional `AlertAnalyzer` calls the Claude API to generate
+a human-readable summary and root cause suggestions. This runs in a **background
+daemon thread**, outside the engine lock, so it never blocks log processing.
+
+- **Input:** alert breakdown (machine names, error codes, counts, time window)
+- **Output:** natural language summary, root cause suggestions, recommended actions
+- **Latency:** 1-2 seconds (async, does not delay alert response)
+- **Graceful degradation:** if no `ANTHROPIC_API_KEY` is set, analysis is skipped
+  and the service works identically without it (`analysis_status = "skipped"`)
+
+The analysis is stored on the Alert object and visible via `GET /api/alerts/{id}`.
+Consumers can check `analysis_status` (`pending` -> `completed`/`failed`/`skipped`).
+
+### Testing vs Evals
+
+The service has two separate quality assurance mechanisms:
+
+| | Unit Tests | Evals |
+|--|-----------|-------|
+| **What they check** | Code correctness (deterministic logic) | LLM output quality (subjective) |
+| **Result** | Pass / Fail | Score (0.0 - 1.0 per criterion) |
+| **Deterministic?** | Yes — same input always gives same result | No — LLM output varies across runs |
+| **When to run** | Every build, every commit (CI) | After changing prompts, models, or LLM config |
+| **Cost** | Free (no API calls) | Costs API calls (~10 calls per eval run) |
+| **Location** | `tests/` | `evals/` |
+
+### Eval Suite
+
+The eval suite (`evals/eval_analyzer.py`) measures whether the analyzer correctly
+identifies patterns in alert data. It defines 5 scenarios:
+
+| Scenario | Error Pattern | What a good analysis should identify |
+|----------|--------------|--------------------------------------|
+| Single machine failure | One machine has 92% of errors | Machine-specific issue, not systemic |
+| Widespread timeout | Same error across all machines | Shared dependency / downstream service |
+| Mixed resource errors | OOM + disk full on 2 machines | Resource exhaustion, under-provisioned |
+| Authentication storm | AUTH_FAILED across all machines | Credential/config issue, check auth service |
+| Database deadlocks | DB_DEADLOCK from API servers | Database contention, review queries |
+
+**Scoring uses LLM-as-judge:** for each scenario, a second Claude call evaluates
+whether the analysis addresses each expected criterion (1.0 = fully addressed,
+0.5 = partial, 0.0 = missed). The eval fails if the average score drops below 0.60.
+
+```
+# Run evals (requires API key)
+ANTHROPIC_API_KEY=sk-... python -m evals.eval_analyzer
+
+# Verbose mode: show full analysis text
+ANTHROPIC_API_KEY=sk-... python -m evals.eval_analyzer --verbose
+```
