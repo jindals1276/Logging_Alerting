@@ -313,18 +313,38 @@ Main Thread                  Request Threads (N)         Slider Thread
 
 ## 7. Performance Notes
 
-Single-message processing (batch_size=1) is roughly 4x slower than batched
-processing (batch_size=500+). The gap is due to per-call overhead on
-`process_batch()`: lock acquire/release, `_check_threshold()`, and Python
-function call cost — all paid once per batch regardless of batch size.
+### Bottleneck Analysis
 
-Run `python -m src.benchmark` to measure actual throughput on your hardware.
-Use `--batch-sizes 1,10,100,500` to see the scaling behavior.
+The HTTP layer is the dominant bottleneck — not the engine. Two levels measured:
 
-### Future Improvement: Micro-Batching
+**Raw engine** (`process_batch()` called directly, no HTTP):
+- batch_size=1: per-call lock/threshold overhead limits throughput.
+- batch_size=500+: roughly 4x faster than single-message due to amortized
+  per-call cost (lock acquire/release, `_check_threshold()`, function calls).
 
-Currently each HTTP request calls `process_batch()` immediately. Under very high
-load, a micro-batching layer could be inserted in `server.py`:
+**End-to-end HTTP** (POST /api/logs via network):
+- batch_size=1: orders of magnitude slower than the raw engine. Each message
+  pays the full cost of TCP connection, HTTP request/response parsing, JSON
+  serialization/deserialization, and `BaseHTTPRequestHandler` overhead.
+- batch_size=500+: dramatically better — HTTP overhead amortized across entries.
+
+The engine is never the bottleneck. The single biggest throughput win is
+**client-side batching** (sending 100+ logs per HTTP request).
+
+Run `python -m src.benchmark` (engine only) or `python -m src.benchmark --http`
+(engine + HTTP) to measure on your hardware. Use `--batch-sizes 1,10,100,500`
+to see the scaling behavior.
+
+### Future Improvements
+
+#### 1. Client-Side Batching (highest impact, no server changes)
+
+Source machines buffer logs and send batches of 100+ per request.
+
+#### 2. Micro-Batching in Server
+
+Currently each HTTP request calls `process_batch()` immediately. A buffering
+layer could be inserted in `server.py`:
 
 ```
 POST /api/logs
@@ -337,6 +357,18 @@ Background flush thread (every 10-50ms):
   -> call engine.process_batch(buffered_entries)
 ```
 
-This amortizes lock and threshold-check overhead across many entries, closing
-the 4x gap between single-message and batched throughput. Trade-off: 10-50ms
-latency before threshold detection. Not implemented currently.
+This amortizes engine per-call overhead. Trade-off: 10-50ms latency before
+threshold detection.
+
+#### 3. Replace stdlib HTTP Server
+
+Python's `BaseHTTPRequestHandler` has significant per-request overhead and
+creates a new thread per connection. Replacing with an async framework
+(`uvicorn`/`FastAPI` or `aiohttp`) would dramatically improve HTTP throughput
+by eliminating thread creation overhead and enabling efficient I/O multiplexing.
+
+#### 4. Connection Pooling / Keep-Alive
+
+Currently each HTTP request opens a new TCP connection. Enabling HTTP
+keep-alive would allow clients to reuse connections across requests,
+eliminating TCP handshake cost per batch.

@@ -193,22 +193,53 @@ A pure event-time approach (window boundaries derived from the latest log timest
 
 ## Performance
 
-### Throughput
+### Two Levels of Throughput
 
-Single-message processing (batch_size=1) is roughly **4x slower** than batched
-processing (batch_size=500+) because every call to `process_batch()` pays the
-full cost of lock acquisition, threshold checking, and function call overhead
-— regardless of how many entries are in the batch.
+There are two throughput levels to consider:
 
-Run `python -m src.benchmark` to measure actual throughput on your hardware.
+1. **Raw engine** — how fast `process_batch()` processes entries in memory
+   (no HTTP overhead). This is the theoretical ceiling.
+2. **End-to-end HTTP** — what a client actually experiences, including JSON
+   parsing, TCP connection, HTTP request/response handling.
 
-### Future Improvement: Micro-Batching
+The HTTP layer is the dominant bottleneck. End-to-end throughput is orders of
+magnitude lower than raw engine throughput because every HTTP request pays the
+cost of TCP connection setup, JSON serialization/deserialization, and Python's
+`BaseHTTPRequestHandler` overhead.
 
-If throughput becomes a bottleneck under high load, a **micro-batching layer**
-could be added between the HTTP handler and the engine. Instead of calling
-`process_batch()` for each incoming request immediately, buffer incoming logs
-for a short window (e.g. 10-50ms) and flush them as a single batch.
+### Scaling Behavior
 
-This would close the 4x gap between single-message and batched throughput.
-The trade-off is a small latency increase (10-50ms) before threshold detection.
-Not implemented currently.
+Larger batch sizes amortize both engine and HTTP overhead:
+
+- **Engine:** single-message calls (batch_size=1) are roughly **4x slower** than
+  batched calls (batch_size=500+) due to per-call lock and threshold-check cost.
+- **HTTP:** the gap is much larger. Single-message HTTP requests are **hundreds of
+  times slower** than batched requests because each message pays the full TCP/HTTP
+  round-trip cost.
+
+The single biggest throughput win is **client-side batching** — having source
+machines buffer logs and send them in batches of 100+ per HTTP request.
+
+Run `python -m src.benchmark` (engine only) or `python -m src.benchmark --http`
+(engine + HTTP) to measure actual throughput on your hardware.
+
+### Future Improvements
+
+If throughput becomes a bottleneck under high load:
+
+1. **Client-side batching** — source machines buffer logs and send batches of
+   100+ per request instead of one at a time. This is the highest-impact change
+   and requires no server modifications.
+
+2. **Micro-batching in the server** — add a buffer between the HTTP handler and
+   the engine. Instead of calling `process_batch()` per request, buffer entries
+   for 10-50ms and flush as a single batch. Closes the 4x engine gap at the
+   cost of slight detection latency.
+
+3. **Replace stdlib HTTP server** — Python's `BaseHTTPRequestHandler` is
+   single-threaded per request with significant per-request overhead. Switching
+   to an async framework (`uvicorn`/`FastAPI` or `aiohttp`) would dramatically
+   improve HTTP throughput.
+
+4. **Connection pooling / keep-alive** — reuse TCP connections across requests
+   instead of opening a new connection per batch, reducing connection setup cost.
