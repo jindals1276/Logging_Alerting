@@ -19,7 +19,7 @@ import threading
 import unittest
 import urllib.request
 import urllib.error
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from src.engine import AggregationEngine
 from src.models import Config
@@ -29,7 +29,7 @@ from src.server import ThreadedHTTPServer, RequestHandler
 def make_log_dict(machine="web-01", error_code="ERR_CONN", log_level="Error",
                   message="test", ts_offset_seconds=0):
     """Helper -- create a log entry dict (as JSON would arrive over HTTP)."""
-    ts = datetime.utcnow() + timedelta(seconds=ts_offset_seconds)
+    ts = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=ts_offset_seconds)
     return {
         "timestamp": ts.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
         "machine_name": machine,

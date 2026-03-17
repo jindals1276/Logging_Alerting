@@ -11,7 +11,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -106,7 +106,7 @@ class Alert:
         """Factory method — creates an Alert with auto-generated ID and timestamp."""
         alert = Alert(
             alert_id=str(uuid.uuid4()),
-            triggered_at=datetime.utcnow(),
+            triggered_at=datetime.now(timezone.utc).replace(tzinfo=None),
             window_start=window_start,
             window_end=window_end,
             total_count=total_count,

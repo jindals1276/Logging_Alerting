@@ -12,7 +12,7 @@ import json
 import threading
 import time
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from unittest.mock import patch, MagicMock
 
 from src.analyzer import AlertAnalyzer
@@ -38,7 +38,7 @@ def make_alert():
 def make_entry():
     """Helper -- create a qualifying LogEntry at current time."""
     return LogEntry(
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
         machine_name="web-01",
         error_code="ERR_CONN",
         log_level="Error",
