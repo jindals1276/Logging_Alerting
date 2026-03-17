@@ -16,14 +16,41 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Supported ISO 8601 timestamp formats, tried in order during parsing.
-# Covers variations with/without microseconds and trailing 'Z'.
-TIMESTAMP_FORMATS = (
-    "%Y-%m-%dT%H:%M:%S.%fZ",   # 2026-03-06T10:30:00.123456Z
-    "%Y-%m-%dT%H:%M:%SZ",       # 2026-03-06T10:30:00Z
-    "%Y-%m-%dT%H:%M:%S.%f",     # 2026-03-06T10:30:00.123456
-    "%Y-%m-%dT%H:%M:%S",        # 2026-03-06T10:30:00
-)
+def _parse_to_utc(ts_str: str) -> Optional[datetime]:
+    """Parse an ISO 8601 timestamp string and normalize to timezone-aware UTC.
+
+    Handles the following formats:
+      - With Z suffix:       2026-03-06T10:30:00Z         -> UTC
+      - With UTC offset:     2026-03-06T10:30:00+00:00    -> UTC
+      - With non-UTC offset: 2026-03-06T10:30:00+05:30    -> converted to UTC
+      - Bare (no timezone):  2026-03-06T10:30:00           -> assumed UTC
+      - With microseconds:   2026-03-06T10:30:00.123456Z  -> UTC
+
+    All results are timezone-aware datetime objects in UTC. This enforces
+    a single timezone throughout the service, preventing silent bugs from
+    timezone mismatches between clients and server.
+
+    Returns None if the string cannot be parsed.
+    """
+    if not ts_str:
+        return None
+
+    try:
+        ts = datetime.fromisoformat(ts_str)
+    except ValueError:
+        return None
+
+    if ts.tzinfo is None:
+        # Bare timestamp with no timezone — assume UTC.
+        # This is the best-effort case; the client should ideally send
+        # an explicit timezone suffix. Documented as "assumed UTC".
+        ts = ts.replace(tzinfo=timezone.utc)
+    else:
+        # Timestamp has timezone info — convert to UTC.
+        # e.g. 16:00:00+05:30 becomes 10:30:00+00:00
+        ts = ts.astimezone(timezone.utc)
+
+    return ts
 
 
 @dataclass
@@ -47,28 +74,27 @@ class LogEntry:
     def from_dict(d: dict) -> Optional["LogEntry"]:
         """Parse a JSON dict into a LogEntry.
 
-        Tries each format in TIMESTAMP_FORMATS until one succeeds.
-        Returns None if the timestamp cannot be parsed (entry is skipped).
+        Uses _parse_to_utc() to parse the timestamp and normalize to
+        timezone-aware UTC. Accepts Z, +00:00, non-UTC offsets (converted),
+        and bare timestamps (assumed UTC). Returns None if unparseable.
         Missing fields default to empty strings.
         """
         ts_str = d.get("timestamp", "")
-        for fmt in TIMESTAMP_FORMATS:
-            try:
-                ts = datetime.strptime(ts_str, fmt)
-                entry = LogEntry(
-                    timestamp=ts,
-                    machine_name=d.get("machine_name", ""),
-                    error_code=d.get("error_code", ""),
-                    log_level=d.get("log_level", ""),
-                    message=d.get("message", ""),
-                )
-                logger.debug("Parsed LogEntry: machine=%s level=%s ts=%s",
-                             entry.machine_name, entry.log_level, ts_str)
-                return entry
-            except ValueError:
-                continue
-        logger.warning("Failed to parse timestamp '%s' from log entry", ts_str)
-        return None
+        ts = _parse_to_utc(ts_str)
+        if ts is None:
+            logger.warning("Failed to parse timestamp '%s' from log entry", ts_str)
+            return None
+
+        entry = LogEntry(
+            timestamp=ts,
+            machine_name=d.get("machine_name", ""),
+            error_code=d.get("error_code", ""),
+            log_level=d.get("log_level", ""),
+            message=d.get("message", ""),
+        )
+        logger.debug("Parsed LogEntry: machine=%s level=%s ts=%s",
+                     entry.machine_name, entry.log_level, ts_str)
+        return entry
 
 
 @dataclass
@@ -106,7 +132,7 @@ class Alert:
         """Factory method — creates an Alert with auto-generated ID and timestamp."""
         alert = Alert(
             alert_id=str(uuid.uuid4()),
-            triggered_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            triggered_at=datetime.now(timezone.utc),
             window_start=window_start,
             window_end=window_end,
             total_count=total_count,
