@@ -31,7 +31,7 @@ import random
 import time
 import urllib.request
 import urllib.error
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from src.engine import AggregationEngine
 from src.models import Config, LogEntry
@@ -45,7 +45,7 @@ def generate_entries(count, machines, spread_seconds=30):
     Spreads timestamps over spread_seconds so entries land in multiple
     buckets (realistic workload).
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     error_codes = ["ERR_CONN", "ERR_TIMEOUT", "ERR_OOM", "ERR_DISK"]
     entries = []
     for _ in range(count):
@@ -66,7 +66,7 @@ def generate_dicts(count, machines, spread_seconds=30):
     Same as generate_entries but returns JSON-serializable dicts
     (avoids including LogEntry parsing in the HTTP benchmark).
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     error_codes = ["ERR_CONN", "ERR_TIMEOUT", "ERR_OOM", "ERR_DISK"]
     entries = []
     for _ in range(count):

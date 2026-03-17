@@ -12,7 +12,7 @@ Covers:
 """
 
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from src.engine import AggregationEngine
 from src.models import Config, LogEntry
@@ -24,7 +24,7 @@ def make_entry(machine="web-01", error_code="ERR_CONN", log_level="Error",
 
     ts_offset_seconds: negative = in the past, positive = in the future.
     """
-    ts = datetime.utcnow() + timedelta(seconds=ts_offset_seconds)
+    ts = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=ts_offset_seconds)
     return LogEntry(
         timestamp=ts,
         machine_name=machine,
@@ -141,7 +141,7 @@ class TestFilterPipeline(unittest.TestCase):
             with engine._lock:
                 # The bucket key should be at or before 'now', not 10s ahead.
                 for bucket_key in engine._buckets:
-                    self.assertLessEqual(bucket_key, datetime.utcnow())
+                    self.assertLessEqual(bucket_key, datetime.now(timezone.utc).replace(tzinfo=None))
         finally:
             engine.shutdown()
 
@@ -458,7 +458,7 @@ class TestWindowSliding(unittest.TestCase):
 
         with self.engine._lock:
             # Move window_start forward past the old buckets.
-            self.engine._window_start = datetime.utcnow() - timedelta(seconds=3)
+            self.engine._window_start = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=3)
             self.engine._slide_window()
 
         # The 5s-old bucket should be evicted.
@@ -476,7 +476,7 @@ class TestWindowSliding(unittest.TestCase):
 
         with self.engine._lock:
             # Slide window to 3s ago, evicting buckets older than that.
-            self.engine._window_start = datetime.utcnow() - timedelta(seconds=3)
+            self.engine._window_start = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=3)
             self.engine._slide_window()
 
         status = self.engine.get_status()
@@ -492,7 +492,7 @@ class TestWindowSliding(unittest.TestCase):
         self.engine.process_batch(entries)
 
         with self.engine._lock:
-            self.engine._window_start = datetime.utcnow() - timedelta(seconds=3)
+            self.engine._window_start = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=3)
             self.engine._slide_window()
 
             # web-01/E1 bucket (5s old) should be evicted and removed
@@ -503,7 +503,7 @@ class TestWindowSliding(unittest.TestCase):
     def test_slide_on_empty_buckets_is_safe(self):
         """Sliding when there are no buckets should not raise errors."""
         with self.engine._lock:
-            self.engine._window_start = datetime.utcnow() - timedelta(seconds=15)
+            self.engine._window_start = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=15)
             # Should not raise.
             self.engine._slide_window()
 

@@ -35,7 +35,7 @@ import sys
 import time
 import urllib.request
 import urllib.error
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # --- Pools of realistic values for generating synthetic log entries ---
 
@@ -80,7 +80,7 @@ def generate_log_entry(machines, error_ratio, base_time=None, spread_seconds=0):
                         Info/Warning/Debug (non-qualifying). For example,
                         0.3 means ~30% of logs will be errors.
         base_time:      The reference timestamp to generate from. Defaults
-                        to datetime.utcnow() if not provided.
+                        to datetime.now(timezone.utc).replace(tzinfo=None) if not provided.
         spread_seconds: If > 0 (burst mode), the timestamp is uniformly
                         distributed in [base_time - spread, base_time].
                         This spreads entries across multiple time buckets
@@ -91,7 +91,7 @@ def generate_log_entry(machines, error_ratio, base_time=None, spread_seconds=0):
         A dict matching the LogEntry JSON schema expected by POST /api/logs.
     """
     if base_time is None:
-        base_time = datetime.utcnow()
+        base_time = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # Pick a random machine from the pool.
     machine = random.choice(machines)
@@ -187,7 +187,7 @@ def run_burst(base_url, machines, count, error_ratio, spread_seconds):
     """
     spread_msg = f", spread over {spread_seconds}s" if spread_seconds > 0 else ""
     print(f"Burst mode: generating {count} logs{spread_msg}...")
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     logs = [generate_log_entry(machines, error_ratio, base_time=now,
                                spread_seconds=spread_seconds)
             for _ in range(count)]
