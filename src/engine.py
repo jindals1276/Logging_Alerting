@@ -297,9 +297,9 @@ class AggregationEngine:
                 progress = 0.0
 
             return {
-                "window_start": (self._window_start.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                "window_start": (self._window_start.isoformat()
                                  if self._window_start else None),
-                "window_end": (window_end.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                "window_end": (window_end.isoformat()
                                if window_end else None),
                 "current_count": self._count,
                 "threshold": self._config.alert_threshold,
@@ -496,8 +496,8 @@ class AggregationEngine:
         print(f"\n{sep}")
         print(f"  ALERT TRIGGERED: {alert.alert_id}")
         print(f"{sep}")
-        print(f"  Window:    {alert.window_start.strftime('%Y-%m-%dT%H:%M:%SZ')}"
-              f" -> {alert.window_end.strftime('%Y-%m-%dT%H:%M:%SZ')}")
+        print(f"  Window:    {alert.window_start.isoformat()}"
+              f" -> {alert.window_end.isoformat()}")
         print(f"  Count:     {alert.total_count} (threshold: {alert.threshold})")
         print(f"  Breakdown:")
         print(f"    {'Machine':<20} {'Error Code':<20} {'Count':>8}")

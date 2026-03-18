@@ -141,18 +141,22 @@ class Alert:
         )
         logger.info("Alert created: id=%s count=%d threshold=%d window=[%s, %s]",
                      alert.alert_id, total_count, threshold,
-                     window_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                     window_end.strftime("%Y-%m-%dT%H:%M:%SZ"))
+                     window_start.isoformat(),
+                     window_end.isoformat())
         return alert
 
     def to_dict(self) -> dict:
-        """Serialize the alert to a JSON-compatible dict for API responses."""
-        fmt = "%Y-%m-%dT%H:%M:%S.%fZ"
+        """Serialize the alert to a JSON-compatible dict for API responses.
+
+        Uses isoformat() for timestamp serialization, which produces
+        proper timezone-aware output (e.g. '2026-03-06T10:30:00+00:00')
+        instead of hardcoding a literal 'Z' suffix via strftime.
+        """
         return {
             "alert_id": self.alert_id,
-            "triggered_at": self.triggered_at.strftime(fmt),
-            "window_start": self.window_start.strftime(fmt),
-            "window_end": self.window_end.strftime(fmt),
+            "triggered_at": self.triggered_at.isoformat(),
+            "window_start": self.window_start.isoformat(),
+            "window_end": self.window_end.isoformat(),
             "total_count": self.total_count,
             "threshold": self.threshold,
             "breakdown": self.breakdown,
