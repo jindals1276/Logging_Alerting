@@ -36,7 +36,7 @@ You need to know when something is going wrong **before** it becomes a full outa
 ### 3. Sliding Time Window
 
 - The service monitors errors within a **rolling 2-hour window**.
-- The window slides forward over time. If the error threshold is not breached within 2 hours, the oldest errors age out and the window moves forward.
+- The window slides forward over time. If the error threshold is not breached within 2 hours, the window slides forward by **1 second at a time**, dropping the oldest second's worth of errors on each slide. This continues every second until either an alert fires or the window catches up to the present.
 - The window advances even during quiet periods when no logs arrive.
 
 ### 4. Alert Threshold
