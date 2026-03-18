@@ -23,8 +23,8 @@ from src.models import Alert, Config, LogEntry
 def make_alert():
     """Helper -- create a sample Alert for testing."""
     return Alert.create(
-        window_start=datetime(2026, 3, 6, 8, 0, 0),
-        window_end=datetime(2026, 3, 6, 10, 0, 0),
+        window_start=datetime(2026, 3, 6, 8, 0, 0, tzinfo=timezone.utc),
+        window_end=datetime(2026, 3, 6, 10, 0, 0, tzinfo=timezone.utc),
         total_count=1500,
         threshold=1000,
         breakdown=[
@@ -38,7 +38,7 @@ def make_alert():
 def make_entry():
     """Helper -- create a qualifying LogEntry at current time."""
     return LogEntry(
-        timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
+        timestamp=datetime.now(timezone.utc),
         machine_name="web-01",
         error_code="ERR_CONN",
         log_level="Error",

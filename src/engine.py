@@ -179,7 +179,7 @@ class AggregationEngine:
         After inserting all qualifying entries, checks whether the threshold
         has been breached. Returns the Alert if one was triggered, else None.
         """
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
         grace = timedelta(seconds=self._config.late_arrival_grace_seconds)
 
         with self._lock:
@@ -361,7 +361,7 @@ class AggregationEngine:
             )
         ]
 
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
         alert = Alert.create(
             window_start=self._window_start,
             window_end=now,
@@ -391,7 +391,7 @@ class AggregationEngine:
         self._buckets.clear()
         self._count = 0
         self._breakdown.clear()
-        self._window_start = datetime.now(timezone.utc).replace(tzinfo=None)
+        self._window_start = datetime.now(timezone.utc)
         logger.info("Window reset. New window_start=%s", self._window_start)
 
     def _slide_window(self):
@@ -472,7 +472,7 @@ class AggregationEngine:
                     continue
 
                 # Check if the full window duration has elapsed.
-                now = datetime.now(timezone.utc).replace(tzinfo=None)
+                now = datetime.now(timezone.utc)
                 if now >= self._window_start + duration:
                     self._slide_window()
                     # Re-check threshold after eviction. Sliding may have

@@ -33,7 +33,7 @@ import os
 import sys
 import urllib.request
 import urllib.error
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.analyzer import AlertAnalyzer, CLAUDE_API_URL, CLAUDE_MODEL, CLAUDE_API_VERSION
 from src.models import Alert
@@ -49,8 +49,8 @@ SCENARIOS = [
         "name": "Single machine failure",
         "description": "One machine dominates all errors — suggests machine-specific issue",
         "alert": Alert.create(
-            window_start=datetime(2026, 3, 6, 8, 0, 0),
-            window_end=datetime(2026, 3, 6, 10, 0, 0),
+            window_start=datetime(2026, 3, 6, 8, 0, 0, tzinfo=timezone.utc),
+            window_end=datetime(2026, 3, 6, 10, 0, 0, tzinfo=timezone.utc),
             total_count=1200,
             threshold=1000,
             breakdown=[
@@ -70,8 +70,8 @@ SCENARIOS = [
         "name": "Widespread timeout",
         "description": "All machines show the same error — suggests shared dependency",
         "alert": Alert.create(
-            window_start=datetime(2026, 3, 6, 14, 0, 0),
-            window_end=datetime(2026, 3, 6, 16, 0, 0),
+            window_start=datetime(2026, 3, 6, 14, 0, 0, tzinfo=timezone.utc),
+            window_end=datetime(2026, 3, 6, 16, 0, 0, tzinfo=timezone.utc),
             total_count=1500,
             threshold=1000,
             breakdown=[
@@ -92,8 +92,8 @@ SCENARIOS = [
         "name": "Mixed errors on few machines",
         "description": "Multiple error types on a subset of machines — complex failure",
         "alert": Alert.create(
-            window_start=datetime(2026, 3, 6, 6, 0, 0),
-            window_end=datetime(2026, 3, 6, 8, 0, 0),
+            window_start=datetime(2026, 3, 6, 6, 0, 0, tzinfo=timezone.utc),
+            window_end=datetime(2026, 3, 6, 8, 0, 0, tzinfo=timezone.utc),
             total_count=1050,
             threshold=1000,
             breakdown=[
@@ -114,8 +114,8 @@ SCENARIOS = [
         "name": "Authentication storm",
         "description": "Auth failures across all machines — possible credential/config issue",
         "alert": Alert.create(
-            window_start=datetime(2026, 3, 6, 3, 0, 0),
-            window_end=datetime(2026, 3, 6, 5, 0, 0),
+            window_start=datetime(2026, 3, 6, 3, 0, 0, tzinfo=timezone.utc),
+            window_end=datetime(2026, 3, 6, 5, 0, 0, tzinfo=timezone.utc),
             total_count=2000,
             threshold=1000,
             breakdown=[
@@ -136,8 +136,8 @@ SCENARIOS = [
         "name": "Database deadlocks",
         "description": "DB deadlocks from app servers — suggests database contention",
         "alert": Alert.create(
-            window_start=datetime(2026, 3, 6, 12, 0, 0),
-            window_end=datetime(2026, 3, 6, 13, 30, 0),
+            window_start=datetime(2026, 3, 6, 12, 0, 0, tzinfo=timezone.utc),
+            window_end=datetime(2026, 3, 6, 13, 30, 0, tzinfo=timezone.utc),
             total_count=1100,
             threshold=1000,
             breakdown=[
