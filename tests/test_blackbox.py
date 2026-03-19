@@ -197,10 +197,12 @@ class TestLogIngestion(unittest.TestCase):
     individually or in batches."""
 
     def test_single_log_accepted(self):
-        """A single qualifying log entry should be accepted."""
+        """A single qualifying log entry should be accepted and response
+        must contain both 'accepted' and 'parse_errors' fields."""
         status, body = _post_logs([_make_log()])
         self.assertEqual(status, 200)
         self.assertIn("accepted", body)
+        self.assertIn("parse_errors", body)
         self.assertGreaterEqual(body["accepted"], 1)
 
     def test_batch_logs_accepted(self):
@@ -216,12 +218,6 @@ class TestLogIngestion(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(body["accepted"], 0)
         self.assertEqual(body["parse_errors"], 0)
-
-    def test_response_contains_accepted_and_parse_errors(self):
-        """Response must contain 'accepted' and 'parse_errors' fields."""
-        status, body = _post_logs([_make_log()])
-        self.assertIn("accepted", body)
-        self.assertIn("parse_errors", body)
 
     def test_single_object_post(self):
         """POST /api/logs with a single object (not wrapped in array)."""
