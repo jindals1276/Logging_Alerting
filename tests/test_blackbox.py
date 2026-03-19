@@ -499,18 +499,14 @@ class TestStatusAPI(unittest.TestCase):
 class TestConfigAPI(unittest.TestCase):
     """Requirement: GET /api/config returns active configuration."""
 
-    def test_config_returns_all_fields(self):
-        """Config response should contain all configurable parameters."""
+    def test_config_api(self):
+        """Config endpoint returns all fields with correct qualifying levels."""
         status, body = _get_json("/api/config")
         self.assertEqual(status, 200)
         self.assertIn("alert_threshold", body)
         self.assertIn("window_duration_seconds", body)
         self.assertIn("qualifying_log_levels", body)
         self.assertIn("late_arrival_grace_seconds", body)
-
-    def test_config_qualifying_levels(self):
-        """Config should list the qualifying log levels (default: Error, Fatal)."""
-        _, body = _get_json("/api/config")
         self.assertIn("Error", body["qualifying_log_levels"])
         self.assertIn("Fatal", body["qualifying_log_levels"])
 
