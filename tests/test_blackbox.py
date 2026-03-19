@@ -472,32 +472,24 @@ class TestAlertHistory(unittest.TestCase):
 class TestStatusAPI(unittest.TestCase):
     """Requirement: GET /api/status shows current window state."""
 
-    def test_status_returns_required_fields(self):
-        """Status response must contain count, threshold, progress."""
+    def test_status_api(self):
+        """Status endpoint returns required fields, reflects ingested logs,
+        and threshold matches config."""
+        _, config = _get_json("/api/config")
+
         status, body = _get_json("/api/status")
         self.assertEqual(status, 200)
         self.assertIn("current_count", body)
         self.assertIn("threshold", body)
         self.assertIn("progress_pct", body)
+        self.assertIn("total_alerts", body)
+        self.assertIsInstance(body["total_alerts"], int)
+        self.assertEqual(body["threshold"], config["alert_threshold"])
 
-    def test_status_reflects_ingested_logs(self):
-        """Count should increase after ingesting qualifying logs."""
-        count_before = _get_json("/api/status")[1]["current_count"]
+        count_before = body["current_count"]
         _post_logs(_make_error_logs(3))
         count_after = _get_json("/api/status")[1]["current_count"]
         self.assertGreaterEqual(count_after, count_before + 3)
-
-    def test_status_threshold_matches_config(self):
-        """Threshold in status should match the configured value."""
-        _, config = _get_json("/api/config")
-        _, status = _get_json("/api/status")
-        self.assertEqual(status["threshold"], config["alert_threshold"])
-
-    def test_status_has_total_alerts(self):
-        """Status should include the total number of alerts fired."""
-        _, body = _get_json("/api/status")
-        self.assertIn("total_alerts", body)
-        self.assertIsInstance(body["total_alerts"], int)
 
 
 # ===================================================================
