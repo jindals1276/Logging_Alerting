@@ -332,23 +332,14 @@ class TestFiltering(unittest.TestCase):
 # 3. SLIDING WINDOW & EVICTION
 # ===================================================================
 
-class TestSlidingWindow(unittest.TestCase):
-    """Requirement: The window slides forward; old errors are evicted.
-
-    NOTE: This test depends on the server having a small window_duration_seconds
-    (e.g. 5s). With the default 2-hour window it will be skipped.
-    """
-
-    def test_errors_within_window_counted(self):
-        """Errors within the window should all be counted."""
-        count_before = _get_json("/api/status")[1]["current_count"]
-        _post_logs(_make_error_logs(5))
-        _, status = _get_json("/api/status")
-        self.assertGreaterEqual(status["current_count"], count_before + 5)
+# NOTE: Sliding window eviction tests require a small window_duration_seconds
+# (e.g. 5s). With the default 2-hour window they are impractical.
+# The "errors within window are counted" case is already covered by
+# TestFiltering.test_error_level_counts and test_mixed_batch_only_qualifying_counted.
 
 
 # ===================================================================
-# 4. ALERT TRIGGERING
+# 3. ALERT TRIGGERING
 # ===================================================================
 
 class TestAlertTriggering(unittest.TestCase):
