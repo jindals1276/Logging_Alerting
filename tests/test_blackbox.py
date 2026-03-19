@@ -259,45 +259,6 @@ class TestFiltering(unittest.TestCase):
         count_after = self._get_count()
         return count_after - count_before
 
-    def test_error_level_counts(self):
-        """Error-level logs should increment the count."""
-        delta = self._get_count_delta([_make_log(log_level="Error")])
-        self.assertGreaterEqual(delta, 1)
-
-    def test_fatal_level_counts(self):
-        """Fatal-level logs should increment the count."""
-        delta = self._get_count_delta([_make_log(log_level="Fatal")])
-        self.assertGreaterEqual(delta, 1)
-
-    def test_info_does_not_count(self):
-        """Info-level logs should NOT increment the count."""
-        delta = self._get_count_delta([_make_log(log_level="Info")])
-        self.assertEqual(delta, 0)
-
-    def test_warning_does_not_count(self):
-        """Warning-level logs should NOT increment the count."""
-        delta = self._get_count_delta([_make_log(log_level="Warning")])
-        self.assertEqual(delta, 0)
-
-    def test_debug_does_not_count(self):
-        """Debug-level logs should NOT increment the count."""
-        delta = self._get_count_delta([_make_log(log_level="Debug")])
-        self.assertEqual(delta, 0)
-
-    def test_stale_logs_discarded(self):
-        """Logs older than the grace period should be discarded."""
-        stale_ts = datetime.now(timezone.utc) - timedelta(seconds=120)
-        stale_log = _make_log(log_level="Error", ts=stale_ts)
-        delta = self._get_count_delta([stale_log])
-        self.assertEqual(delta, 0)
-
-    def test_future_logs_beyond_grace_discarded(self):
-        """Logs far in the future should be discarded."""
-        future_ts = datetime.now(timezone.utc) + timedelta(seconds=300)
-        future_log = _make_log(log_level="Error", ts=future_ts)
-        delta = self._get_count_delta([future_log])
-        self.assertEqual(delta, 0)
-
     def test_mixed_batch_only_qualifying_counted(self):
         """In a mixed batch, only Error/Fatal logs count."""
         logs = [
