@@ -366,70 +366,49 @@ class TestAlertTriggering(unittest.TestCase):
         logs = _make_error_logs(needed, machine=machine, error_code=error_code)
         return _post_logs(logs)
 
-    def test_alert_fires_at_threshold(self):
-        """Sending enough errors to reach threshold should trigger an alert."""
-        _, body = self._send_enough_to_trigger()
+    def test_alert_fires_with_correct_structure(self):
+        """Triggering an alert should return a well-formed alert object with
+        all required fields and a properly structured breakdown."""
+        _, body = self._send_enough_to_trigger(machine="db-01",
+                                                error_code="ERR_OOM")
         self.assertIn("alert", body)
         self.assertIsNotNone(body["alert"])
 
-    def test_no_alert_below_threshold(self):
-        """Sending fewer than threshold errors should NOT trigger an alert."""
-        # Send just 1 log — well below any reasonable threshold
-        _, body = _post_logs([_make_log(log_level="Error")])
-        alert = body.get("alert")
-        self.assertTrue(alert is None or alert == {},
-                        f"Alert should not fire for 1 log, got: {alert}")
-
-    def test_alert_has_required_fields(self):
-        """The alert object must contain all required fields per requirements."""
-        _, body = self._send_enough_to_trigger()
         alert = body["alert"]
-        self.assertIn("alert_id", alert)
-        self.assertIn("window_start", alert)
-        self.assertIn("window_end", alert)
-        self.assertIn("total_count", alert)
-        self.assertIn("breakdown", alert)
-        self.assertIn("threshold", alert)
+        for field in ("alert_id", "window_start", "window_end",
+                       "total_count", "breakdown", "threshold"):
+            self.assertIn(field, alert)
 
-    def test_alert_breakdown_content(self):
-        """Breakdown should contain machine_name, error_code, and count."""
-        _, body = self._send_enough_to_trigger(machine="db-01",
-                                                error_code="ERR_OOM")
-        breakdown = body["alert"]["breakdown"]
+        breakdown = alert["breakdown"]
         self.assertGreater(len(breakdown), 0)
         entry = breakdown[0]
-        self.assertIn("machine_name", entry)
-        self.assertIn("error_code", entry)
-        self.assertIn("count", entry)
+        for field in ("machine_name", "error_code", "count"):
+            self.assertIn(field, entry)
 
-    def test_breakdown_sorted_by_count_descending(self):
-        """Breakdown entries should be sorted by count, highest first."""
-        _, body = self._send_enough_to_trigger()
-        breakdown = body["alert"]["breakdown"]
         if len(breakdown) > 1:
             counts = [b["count"] for b in breakdown]
             self.assertEqual(counts, sorted(counts, reverse=True),
                              "Breakdown should be sorted by count descending")
 
-    def test_window_resets_after_alert(self):
-        """After an alert, the count should reset to 0."""
-        self._send_enough_to_trigger()
+    def test_no_alert_below_threshold(self):
+        """Sending fewer than threshold errors should NOT trigger an alert."""
+        _, body = _post_logs([_make_log(log_level="Error")])
+        alert = body.get("alert")
+        self.assertTrue(alert is None or alert == {},
+                        f"Alert should not fire for 1 log, got: {alert}")
+
+    def test_reset_and_second_alert_with_unique_id(self):
+        """After an alert the window resets to 0, a second alert can fire,
+        and each alert has a unique ID."""
+        _, body1 = self._send_enough_to_trigger()
+        self.assertIsNotNone(body1.get("alert"))
+
         _, status = _get_json("/api/status")
         self.assertEqual(status["current_count"], 0,
                          "Count should reset to 0 after alert fires")
 
-    def test_second_alert_after_reset(self):
-        """A second alert can fire after the window resets."""
-        _, body1 = self._send_enough_to_trigger()
-        self.assertIsNotNone(body1.get("alert"))
-
         _, body2 = self._send_enough_to_trigger()
         self.assertIsNotNone(body2.get("alert"))
-
-    def test_alert_has_unique_id(self):
-        """Each alert should have a unique ID."""
-        _, body1 = self._send_enough_to_trigger()
-        _, body2 = self._send_enough_to_trigger()
         self.assertNotEqual(body1["alert"]["alert_id"],
                             body2["alert"]["alert_id"])
 
