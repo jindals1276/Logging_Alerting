@@ -442,10 +442,10 @@ class TestAlertHistory(unittest.TestCase):
         self.assertGreater(len(alerts_after), count_before)
 
     def test_get_alert_by_id(self):
-        """GET /api/alerts/{id} should return the specific alert."""
+        """GET /api/alerts/{id} should return the specific alert with
+        analysis fields."""
         _, alerts = _get_json("/api/alerts")
         if len(alerts) == 0:
-            # Trigger one first
             _, config = _get_json("/api/config")
             threshold = config["alert_threshold"]
             current = _get_json("/api/status")[1]["current_count"]
@@ -456,26 +456,13 @@ class TestAlertHistory(unittest.TestCase):
         status, alert = _get_json(f"/api/alerts/{alert_id}")
         self.assertEqual(status, 200)
         self.assertEqual(alert["alert_id"], alert_id)
+        self.assertIn("analysis_status", alert)
+        self.assertIn("analysis", alert)
 
     def test_get_alert_unknown_id_returns_404(self):
         """GET /api/alerts/{bad-id} should return 404."""
         status, body = _get_json("/api/alerts/nonexistent-id-12345")
         self.assertEqual(status, 404)
-
-    def test_alert_has_analysis_fields(self):
-        """Alert response should include analysis and analysis_status fields."""
-        _, alerts = _get_json("/api/alerts")
-        if len(alerts) == 0:
-            _, config = _get_json("/api/config")
-            threshold = config["alert_threshold"]
-            current = _get_json("/api/status")[1]["current_count"]
-            _post_logs(_make_error_logs(max(threshold - current, 0)))
-            _, alerts = _get_json("/api/alerts")
-
-        alert_id = alerts[-1]["alert_id"]
-        _, alert = _get_json(f"/api/alerts/{alert_id}")
-        self.assertIn("analysis_status", alert)
-        self.assertIn("analysis", alert)
 
 
 # ===================================================================
