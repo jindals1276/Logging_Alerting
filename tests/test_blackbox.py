@@ -272,6 +272,20 @@ class TestFiltering(unittest.TestCase):
         delta = self._get_count_delta(logs)
         self.assertEqual(delta, 3)  # 2 Error + 1 Fatal
 
+    def test_stale_logs_discarded(self):
+        """Logs older than the grace period should be discarded."""
+        stale_ts = datetime.now(timezone.utc) - timedelta(seconds=120)
+        stale_log = _make_log(log_level="Error", ts=stale_ts)
+        delta = self._get_count_delta([stale_log])
+        self.assertEqual(delta, 0)
+
+    def test_future_logs_beyond_grace_discarded(self):
+        """Logs far in the future should be discarded."""
+        future_ts = datetime.now(timezone.utc) + timedelta(seconds=300)
+        future_log = _make_log(log_level="Error", ts=future_ts)
+        delta = self._get_count_delta([future_log])
+        self.assertEqual(delta, 0)
+
     def test_non_qualifying_still_accepted(self):
         """Non-qualifying logs are accepted (not parse errors), just not counted."""
         logs = [_make_log(log_level="Info")]
