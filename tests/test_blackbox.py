@@ -901,5 +901,12 @@ class TestIsolatedConfigAPI(unittest.TestCase):
         self.assertEqual(body["late_arrival_grace_seconds"], 30)
 
 
+class TestCIVerification(unittest.TestCase):
+    """Temporary test to verify CI blocks merge on failure."""
+
+    def test_deliberate_failure(self):
+        self.fail("This test intentionally fails to verify CI blocks merge")
+
+
 if __name__ == "__main__":
     unittest.main()
