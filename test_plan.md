@@ -16,7 +16,7 @@ python -m unittest tests.test_blackbox -v
 python -m unittest tests.test_blackbox.TestAlertTriggering -v
 
 # Run a single test
-python -m unittest tests.test_blackbox.TestFiltering.test_info_does_not_count -v
+python -m unittest tests.test_blackbox.TestFiltering.test_mixed_batch_only_qualifying_counted -v
 ```
 
 To test against an **external server** instead of auto-starting one, set the `SERVER_URL` environment variable:
@@ -45,67 +45,46 @@ No external dependencies are needed — all tests use Python stdlib (`unittest`,
 
 ## Test Matrix
 
-### 1. Log Ingestion (`TestLogIngestion`) — 5 tests
+### 1. Log Ingestion (`TestLogIngestion`) — 4 tests
 
 Tests the core `POST /api/logs` endpoint for accepting log entries.
 
 | # | Test | Requirement | What it verifies |
 |---|------|-------------|------------------|
-| 1 | `test_single_log_accepted` | Logs can arrive individually | A single log entry returns 200 with `accepted >= 1` |
+| 1 | `test_single_log_accepted` | Logs can arrive individually | A single log entry returns 200 with `accepted >= 1`, response contains both `accepted` and `parse_errors` fields |
 | 2 | `test_batch_logs_accepted` | Logs can arrive in batches | A batch of 5 logs returns `accepted == 5` |
 | 3 | `test_empty_batch` | Graceful handling | Empty array returns `accepted=0, parse_errors=0` |
-| 4 | `test_response_contains_accepted_and_parse_errors` | API contract | Response body contains both `accepted` and `parse_errors` fields |
-| 5 | `test_single_object_post` | Single object POST | `POST /api/logs` with `{...}` (not array) returns `accepted=1` |
+| 4 | `test_single_object_post` | Single object POST | `POST /api/logs` with `{...}` (not array) returns `accepted=1` |
 
 ---
 
-### 2. Filtering (`TestFiltering`) — 10 tests
+### 2. Filtering (`TestFiltering`) — 5 tests
 
 Tests that only qualifying logs (Error/Fatal) count toward the threshold, and that stale/future logs are discarded. Uses **delta-based assertions** (count before vs. after) to work correctly against a shared server with existing state.
 
 | # | Test | Requirement | What it verifies |
 |---|------|-------------|------------------|
-| 1 | `test_error_level_counts` | Error logs count | Error log increments `current_count` (delta ≥ 1) |
-| 2 | `test_fatal_level_counts` | Fatal logs count | Fatal log increments `current_count` (delta ≥ 1) |
-| 3 | `test_info_does_not_count` | Info ignored | Info log does NOT change count (delta == 0) |
-| 4 | `test_warning_does_not_count` | Warning ignored | Warning log does NOT change count (delta == 0) |
-| 5 | `test_debug_does_not_count` | Debug ignored | Debug log does NOT change count (delta == 0) |
-| 6 | `test_stale_logs_discarded` | Late arrival > 60s discarded | Log 120s in the past → count unchanged (delta == 0) |
-| 7 | `test_future_logs_beyond_grace_discarded` | Far-future discarded | Log 300s in the future → count unchanged (delta == 0) |
-| 8 | `test_mixed_batch_only_qualifying_counted` | Filtering in batch | Batch of 6 (2 Error + 1 Fatal + 3 non-qualifying) → delta == 3 |
-| 9 | `test_non_qualifying_still_accepted` | Non-qualifying not rejected | Info log returns `accepted=1, parse_errors=0` |
-| 10 | `test_slightly_future_accepted` | Clock skew grace | Log 5s in the future (within 60s grace) → accepted and counted |
+| 1 | `test_mixed_batch_only_qualifying_counted` | Filtering in batch | Batch of 6 (2 Error + 1 Fatal + 3 non-qualifying) → delta == 3 |
+| 2 | `test_stale_logs_discarded` | Late arrival > 60s discarded | Log 120s in the past → count unchanged (delta == 0) |
+| 3 | `test_future_logs_beyond_grace_discarded` | Far-future discarded | Log 300s in the future → count unchanged (delta == 0) |
+| 4 | `test_non_qualifying_still_accepted` | Non-qualifying not rejected | Info log returns `accepted=1, parse_errors=0` |
+| 5 | `test_slightly_future_accepted` | Clock skew grace | Log 5s in the future (within 60s grace) → accepted and counted |
 
 ---
 
-### 3. Sliding Window (`TestSlidingWindow`) — 1 test
-
-Tests that errors within the window are counted. Uses delta-based assertion against the module-level server.
-
-| # | Test | Requirement | What it verifies |
-|---|------|-------------|------------------|
-| 1 | `test_errors_within_window_counted` | Errors in window counted | 5 errors → count increases by at least 5 |
-
----
-
-### 4. Alert Triggering (`TestAlertTriggering`) — 8 tests
+### 3. Alert Triggering (`TestAlertTriggering`) — 3 tests
 
 Tests the alert mechanism. Reads the server's configured threshold via `GET /api/config` and sends exactly enough errors to trigger, accounting for existing count.
 
 | # | Test | Requirement | What it verifies |
 |---|------|-------------|------------------|
-| 1 | `test_alert_fires_at_threshold` | Alert at threshold | Sends enough errors to reach threshold → `alert` present in response |
+| 1 | `test_alert_fires_with_correct_structure` | Alert at threshold, structure, breakdown | Sends enough errors to reach threshold → alert with all required fields (`alert_id`, `window_start`, `window_end`, `total_count`, `breakdown`, `threshold`), breakdown entries have `machine_name`, `error_code`, `count` and are sorted by count descending |
 | 2 | `test_no_alert_below_threshold` | No premature alert | 1 error → no `alert` in response |
-| 3 | `test_alert_has_required_fields` | Alert structure | Alert contains `alert_id`, `window_start`, `window_end`, `total_count`, `breakdown`, `threshold` |
-| 4 | `test_alert_breakdown_content` | Breakdown content | Breakdown entries have `machine_name`, `error_code`, `count` |
-| 5 | `test_breakdown_sorted_by_count_descending` | Breakdown sorting | Breakdown entries are ordered highest count first |
-| 6 | `test_window_resets_after_alert` | Reset after alert | After alert fires, `current_count` resets to 0 |
-| 7 | `test_second_alert_after_reset` | Multiple alerts | Two alerts can fire sequentially after reset |
-| 8 | `test_alert_has_unique_id` | Unique IDs | Two consecutive alerts have different `alert_id` values |
+| 3 | `test_reset_and_second_alert_with_unique_id` | Reset, multiple alerts, unique IDs | After alert fires `current_count` resets to 0, a second alert can fire, and both alerts have different `alert_id` values |
 
 ---
 
-### 5. Alert History API (`TestAlertHistory`) — 5 tests
+### 4. Alert History API (`TestAlertHistory`) — 4 tests
 
 Tests the alert retrieval endpoints. Adapts to existing server state (e.g., triggers an alert if none exist).
 
@@ -113,37 +92,32 @@ Tests the alert retrieval endpoints. Adapts to existing server state (e.g., trig
 |---|------|-------------|------------------|
 | 1 | `test_alerts_endpoint_returns_list` | API contract | `GET /api/alerts` returns a JSON list |
 | 2 | `test_alert_appears_in_history` | Alert stored | After triggering, alert count in `GET /api/alerts` increases |
-| 3 | `test_get_alert_by_id` | Retrieve by ID | `GET /api/alerts/{id}` returns matching alert (200) |
+| 3 | `test_get_alert_by_id` | Retrieve by ID, analysis fields | `GET /api/alerts/{id}` returns matching alert (200) with `analysis` and `analysis_status` fields |
 | 4 | `test_get_alert_unknown_id_returns_404` | Unknown ID | `GET /api/alerts/nonexistent` returns 404 |
-| 5 | `test_alert_has_analysis_fields` | Analysis fields | Alert includes `analysis` and `analysis_status` fields |
 
 ---
 
-### 6. Status API (`TestStatusAPI`) — 4 tests
+### 5. Status API (`TestStatusAPI`) — 1 test
 
 Tests the `GET /api/status` endpoint. Uses delta-based assertions for count changes.
 
 | # | Test | Requirement | What it verifies |
 |---|------|-------------|------------------|
-| 1 | `test_status_returns_required_fields` | API contract | Response has `current_count`, `threshold`, `progress_pct` |
-| 2 | `test_status_reflects_ingested_logs` | Count accuracy | After 3 errors, count increases by at least 3 |
-| 3 | `test_status_threshold_matches_config` | Config match | Threshold in status == threshold in `GET /api/config` |
-| 4 | `test_status_has_total_alerts` | Alert counter | `total_alerts` field present and is an integer |
+| 1 | `test_status_api` | API contract, count accuracy, config match, alert counter | Response has `current_count`, `threshold`, `progress_pct`, `total_alerts` (integer); after 3 errors count increases by at least 3; threshold matches `GET /api/config` |
 
 ---
 
-### 7. Config API (`TestConfigAPI`) — 2 tests
+### 6. Config API (`TestConfigAPI`) — 1 test
 
 Tests the `GET /api/config` endpoint against the running server's configuration.
 
 | # | Test | Requirement | What it verifies |
 |---|------|-------------|------------------|
-| 1 | `test_config_returns_all_fields` | API contract | Response has `alert_threshold`, `window_duration_seconds`, `qualifying_log_levels`, `late_arrival_grace_seconds` |
-| 2 | `test_config_qualifying_levels` | Levels listed | `qualifying_log_levels` contains "Error" and "Fatal" |
+| 1 | `test_config_api` | API contract, qualifying levels | Response has `alert_threshold`, `window_duration_seconds`, `qualifying_log_levels`, `late_arrival_grace_seconds`; qualifying levels contain "Error" and "Fatal" |
 
 ---
 
-### 8. Timezone Handling (`TestTimezoneHandling`) — 5 tests
+### 7. Timezone Handling (`TestTimezoneHandling`) — 5 tests
 
 Tests that timestamps in various formats are accepted and normalized to UTC. Validates only the POST response (`accepted`/`parse_errors`) to avoid flaky assertions from shared server state.
 
@@ -157,7 +131,7 @@ Tests that timestamps in various formats are accepted and normalized to UTC. Val
 
 ---
 
-### 9. Robustness / Error Handling (`TestRobustness`) — 7 tests
+### 8. Robustness / Error Handling (`TestRobustness`) — 7 tests
 
 Tests that the service handles bad input gracefully without crashing.
 
@@ -173,7 +147,7 @@ Tests that the service handles bad input gracefully without crashing.
 
 ---
 
-### 10. Concurrency (`TestConcurrency`) — 2 tests
+### 9. Concurrency (`TestConcurrency`) — 2 tests
 
 Tests thread safety under concurrent load. Uses delta-based count assertions.
 
@@ -184,7 +158,7 @@ Tests thread safety under concurrent load. Uses delta-based count assertions.
 
 ---
 
-### 11. Memory Bounded (`TestMemoryBounded`) — 1 test
+### 10. Memory Bounded (`TestMemoryBounded`) — 1 test
 
 Tests that the service handles large volumes without crashing.
 
@@ -194,17 +168,17 @@ Tests that the service handles large volumes without crashing.
 
 ---
 
-### 12. Isolated Server Tests — 9 tests (5 classes)
+### 11. Isolated Server Tests — 9 tests (5 classes)
 
 These tests start their own managed server instance with custom configuration, enabling clean-state and custom-threshold tests that are not possible against a shared server.
 
-#### 12a. Sliding Window Eviction (`TestIsolatedSlidingWindow`) — 1 test
+#### 11a. Sliding Window Eviction (`TestIsolatedSlidingWindow`) — 1 test
 
 | # | Test | Requirement | What it verifies |
 |---|------|-------------|------------------|
 | 1 | `test_old_errors_evicted_after_window_expires` | Window eviction | 5 errors sent, wait 7s (window=5s) → count decreases |
 
-#### 12b. Alert Triggering (`TestIsolatedAlertTriggering`) — 3 tests
+#### 11b. Alert Triggering (`TestIsolatedAlertTriggering`) — 3 tests
 
 | # | Test | Requirement | What it verifies |
 |---|------|-------------|------------------|
@@ -212,21 +186,21 @@ These tests start their own managed server instance with custom configuration, e
 | 2 | `test_breakdown_counts_accurate` | Breakdown accuracy | 3 from web-01 + 2 from web-02 → exact counts in breakdown |
 | 3 | `test_post_reset_straggler_dropped` | Post-reset straggler | Log timestamped before alert reset → not counted |
 
-#### 12c. Alert History (`TestIsolatedAlertHistory`) — 2 tests
+#### 11c. Alert History (`TestIsolatedAlertHistory`) — 2 tests
 
 | # | Test | Requirement | What it verifies |
 |---|------|-------------|------------------|
 | 1 | `test_alerts_empty_initially` | Clean state | Fresh server → `GET /api/alerts` returns empty list |
 | 2 | `test_multiple_alerts_in_history` | Multiple alerts | 3 alert cycles → history contains all 3 |
 
-#### 12d. Status API (`TestIsolatedStatusAPI`) — 2 tests
+#### 11d. Status API (`TestIsolatedStatusAPI`) — 2 tests
 
 | # | Test | Requirement | What it verifies |
 |---|------|-------------|------------------|
 | 1 | `test_progress_percentage` | Progress accuracy | 50/100 errors → `progress_pct ≈ 50.0` |
 | 2 | `test_status_resets_after_alert` | Status reset | After alert fires → `current_count == 0` |
 
-#### 12e. Config API (`TestIsolatedConfigAPI`) — 1 test
+#### 11e. Config API (`TestIsolatedConfigAPI`) — 1 test
 
 | # | Test | Requirement | What it verifies |
 |---|------|-------------|------------------|
@@ -238,13 +212,12 @@ These tests start their own managed server instance with custom configuration, e
 
 | Test Class | Tests | Requirement Area |
 |------------|------:|------------------|
-| `TestLogIngestion` | 5 | Log ingestion via HTTP API |
-| `TestFiltering` | 10 | Log level filtering, stale/future discard |
-| `TestSlidingWindow` | 1 | Window counting |
-| `TestAlertTriggering` | 8 | Alert threshold, breakdown, reset |
-| `TestAlertHistory` | 5 | Alert retrieval API |
-| `TestStatusAPI` | 4 | Status endpoint accuracy |
-| `TestConfigAPI` | 2 | Configuration endpoint |
+| `TestLogIngestion` | 4 | Log ingestion via HTTP API |
+| `TestFiltering` | 5 | Log level filtering, stale/future discard |
+| `TestAlertTriggering` | 3 | Alert threshold, structure, breakdown, reset, unique IDs |
+| `TestAlertHistory` | 4 | Alert retrieval API |
+| `TestStatusAPI` | 1 | Status endpoint accuracy |
+| `TestConfigAPI` | 1 | Configuration endpoint |
 | `TestTimezoneHandling` | 5 | Timezone normalization |
 | `TestRobustness` | 7 | Error handling, resilience |
 | `TestConcurrency` | 2 | Thread safety |
@@ -254,4 +227,4 @@ These tests start their own managed server instance with custom configuration, e
 | `TestIsolatedAlertHistory` | 2 | Alert history with clean state (empty, multiple) |
 | `TestIsolatedStatusAPI` | 2 | Status with clean state (progress %, reset) |
 | `TestIsolatedConfigAPI` | 1 | Config with custom values |
-| **Total** | **59** | |
+| **Total** | **42** | |
